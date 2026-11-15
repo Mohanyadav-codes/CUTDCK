@@ -53,45 +53,60 @@ fn mouth_motion(prev: &[u8], cur: &[u8], w: u32, h: u32, r: &RectN) -> f32 {
     if n == 0 { 0.0 } else { sum as f32 / n as f32 }
 }
 
-/// Detect faces in a section video.
+/// Detect faces in a section video. The detector isn't thread-safe, so it
+/// lives on one blocking thread and frames are streamed to it.
 pub async fn detect(tools: &Tools, video: &Path, src_w: u32, src_h: u32, cancel: &CancellationToken) -> Result<FaceData> {
     let model = tools.face_model.to_string_lossy().to_string();
-    let mut det = rustface::create_detector(&model).map_err(|e| anyhow!("face model failed to load: {e}"))?;
-    // Faces in a gaming facecam can be small; 640 px wide frames → min 18 px.
-    det.set_min_face_size(20);
-    det.set_score_thresh(2.0);
-    det.set_pyramid_scale_factor(0.8);
-    det.set_slide_window_step(4, 4);
-    let det = std::sync::Mutex::new(det);
-    let mut frames: Vec<FrameFaces> = Vec::new();
-    let mut prev: Option<Vec<u8>> = None;
-    gray_frames(tools, video, SAMPLE_FPS, SAMPLE_W, src_w, src_h, cancel, |t, w, h, px| {
-        let img = rustface::ImageData::new(px, w, h);
-        let found = det.lock().unwrap().detect(&img);
-        let mut faces: Vec<FaceObs> = found
-            .iter()
-            .map(|f| {
-                let b = f.bbox();
-                let r = RectN {
-                    x: b.x() as f32 / w as f32,
-                    y: b.y() as f32 / h as f32,
-                    w: b.width() as f32 / w as f32,
-                    h: b.height() as f32 / h as f32,
-                };
-                let motion = prev.as_ref().map(|p| mouth_motion(p, px, w, h, &r)).unwrap_or(0.0);
-                FaceObs { r, score: f.score() as f32, motion }
-            })
-            .filter(|f| f.r.w > 0.0 && f.r.h > 0.0)
-            .collect();
-        faces.sort_by(|a, b| b.r.area().partial_cmp(&a.r.area()).unwrap());
-        faces.truncate(4);
-        frames.push(FrameFaces { t, faces });
-        prev = Some(px.to_vec());
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<(f64, u32, u32, Vec<u8>)>(8);
+    let worker = tokio::task::spawn_blocking(move || -> Result<Vec<FrameFaces>> {
+        let mut det = rustface::create_detector(&model).map_err(|e| anyhow!("face model failed to load: {e}"))?;
+        // Faces in a gaming facecam can be small; 640 px wide frames ? min 20 px (the detector's floor).
+        det.set_min_face_size(20);
+        det.set_score_thresh(2.0);
+        det.set_pyramid_scale_factor(0.8);
+        det.set_slide_window_step(4, 4);
+        let mut frames: Vec<FrameFaces> = Vec::new();
+        let mut prev: Option<Vec<u8>> = None;
+        while let Some((t, w, h, px)) = rx.blocking_recv() {
+            let img = rustface::ImageData::new(&px, w, h);
+            let found = det.detect(&img);
+            let mut faces: Vec<FaceObs> = found
+                .iter()
+                .map(|f| {
+                    let b = f.bbox();
+                    let r = RectN { x: b.x() as f32 / w as f32, y: b.y() as f32 / h as f32, w: b.width() as f32 / w as f32, h: b.height() as f32 / h as f32 };
+                    let motion = prev.as_ref().map(|p| mouth_motion(p, &px, w, h, &r)).unwrap_or(0.0);
+                    FaceObs { r, score: f.score() as f32, motion }
+                })
+                .filter(|f| f.r.w > 0.0 && f.r.h > 0.0)
+                .collect();
+            faces.sort_by(|a, b| b.r.area().partial_cmp(&a.r.area()).unwrap());
+            faces.truncate(4);
+            frames.push(FrameFaces { t, faces });
+            prev = Some(px);
+        }
+        Ok(frames)
+    });
+    let feed = gray_frames(tools, video, SAMPLE_FPS, SAMPLE_W, src_w, src_h, cancel, |t, w, h, px| {
+        // Bounded channel: wait for the detector rather than buffering frames.
+        let mut item = Some((t, w, h, px.to_vec()));
+        while let Some(it) = item.take() {
+            match tx.try_send(it) {
+                Ok(()) => {}
+                Err(tokio::sync::mpsc::error::TrySendError::Full(it)) => {
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                    item = Some(it);
+                }
+                Err(_) => break,
+            }
+        }
     })
-    .await?;
+    .await;
+    drop(tx);
+    let frames = worker.await??;
+    feed?;
     Ok(FaceData { fps: SAMPLE_FPS, src_w, src_h, frames })
 }
-
 #[derive(Debug, Clone)]
 pub struct Track {
     pub id: usize,

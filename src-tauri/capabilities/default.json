@@ -1,10 +1,22 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Permissions for the Studio and Tray windows",
+  "windows": ["studio", "tray"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-set-focus",
+    "opener:default",
+    "opener:allow-open-url",
+    "dialog:allow-open",
+    "clipboard-manager:allow-read-text",
+    "drag:default",
+    "autostart:default"
   ]
 }
