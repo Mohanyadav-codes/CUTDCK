@@ -100,6 +100,7 @@ export interface Settings {
   export_dir: string;
   launch_at_login: boolean;
   listen_budget_min: number;
+  tray_corner: string;
 }
 
 export interface Preset {

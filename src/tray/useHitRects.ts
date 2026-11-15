@@ -5,7 +5,7 @@ import { api, type Rect } from "../lib/api";
  * Tell the backend which parts of the transparent tray window are solid, so
  * clicks pass through everywhere else. Elements opt in with `data-hit`.
  */
-export function useHitRects() {
+export function useHitRects(corner: string = "br") {
   useEffect(() => {
     let last = "";
     let alive = true;
@@ -18,8 +18,8 @@ export function useHitRects() {
       });
       const W = window.innerWidth;
       const H = window.innerHeight;
-      const zone: Rect = { x: W - 300, y: H - 300, w: 300, h: 300 };
-      const key = JSON.stringify(rects.map((r) => [Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h)]));
+      const zone: Rect = { x: corner.endsWith("l") ? 0 : W - 300, y: corner.startsWith("t") ? 0 : H - 300, w: 300, h: 300 };
+      const key = corner + JSON.stringify(rects.map((r) => [Math.round(r.x), Math.round(r.y), Math.round(r.w), Math.round(r.h)]));
       if (key !== last) {
         last = key;
         api.setHitRects(rects, zone).catch(() => {});
@@ -30,5 +30,5 @@ export function useHitRects() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [corner]);
 }

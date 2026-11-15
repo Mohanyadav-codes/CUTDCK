@@ -120,6 +120,7 @@ pub fn save_settings(app: AppHandle, st: State<AppState>, settings: crate::setti
     let old = st.settings();
     let mut s = settings;
     s.ai = s.ai.or(old.ai);
+    s.tray_corner = old.tray_corner.clone();
     if s.launch_at_login != old.launch_at_login {
         use tauri_plugin_autostart::ManagerExt;
         let al = app.autolaunch();
@@ -300,6 +301,20 @@ pub fn focus_tray(app: AppHandle) {
         let _ = w.set_ignore_cursor_events(false);
         let _ = w.set_focus();
     }
+}
+
+#[tauri::command]
+pub fn drag_tray(app: AppHandle) {
+    crate::tray::drag(&app);
+}
+
+#[tauri::command]
+pub fn set_tray_corner(app: AppHandle, corner: String) -> R<()> {
+    if !["br", "bl", "tr", "tl"].contains(&corner.as_str()) {
+        return Err("unknown corner".into());
+    }
+    crate::tray::set_corner(&app, &corner);
+    Ok(())
 }
 
 #[tauri::command]

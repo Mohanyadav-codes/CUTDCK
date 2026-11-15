@@ -156,3 +156,6 @@ textarea {
 @font-face { font-family: "Bangers"; src: url("./assets/fonts/Bangers-Regular.ttf"); font-display: block; }
 @font-face { font-family: "Bungee"; src: url("./assets/fonts/Bungee-Regular.ttf"); font-display: block; }
 @font-face { font-family: "Poppins"; font-weight: 700; src: url("./assets/fonts/Poppins-Bold.ttf"); font-display: block; }
+body.tray .glass-dark {
+  background: rgb(16 16 22 / 0.97);
+}

@@ -125,6 +125,21 @@ export function SettingsView() {
               <FolderOpen size={13} /> Change
             </Button>
           </Field>
+          <Field label="Corner button position" hint="You can also drag the button to any corner.">
+            <Segmented
+              value={s.tray_corner || "br"}
+              onChange={async (v) => {
+                await api.setTrayCorner(v);
+                await loadInfo();
+              }}
+              options={[
+                { value: "tl", label: "? Top left" },
+                { value: "tr", label: "? Top right" },
+                { value: "bl", label: "? Bottom left" },
+                { value: "br", label: "? Bottom right" },
+              ]}
+            />
+          </Field>
           <Field label="Start with my computer" hint="Keeps the deck in the corner, ready for links.">
             <Toggle on={s.launch_at_login} onChange={(v) => save({ ...s, launch_at_login: v })} />
           </Field>

@@ -1,6 +1,7 @@
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type PanInfo } from "motion/react";
 import { Check, ClipboardPaste, Link2, Loader2, Maximize2, Upload, X } from "lucide-react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { listen } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
 import { startDrag } from "@crabnebula/tauri-plugin-drag";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -14,6 +15,12 @@ import { useHitRects } from "./useHitRects";
 const VIDEO_EXT = ["mp4", "mov", "mkv", "webm", "m4v", "avi", "flv", "ts"];
 
 type Item = { pid: string; clip: Clip };
+export type Corner = "br" | "bl" | "tr" | "tl";
+
+/** Position relative to the active corner. */
+function at(corner: Corner, x: number, y: number): React.CSSProperties {
+  return { [corner.endsWith("l") ? "left" : "right"]: x, [corner.startsWith("t") ? "top" : "bottom"]: y } as React.CSSProperties;
+}
 
 export function Tray() {
   const projects = useStore((s) => s.projects);
@@ -25,7 +32,39 @@ export function Tray() {
   const [deckOpen, setDeckOpen] = useState(false);
   const [hoverPill, setHoverPill] = useState(false);
   const closeTimer = useRef<number | null>(null);
-  useHitRects();
+  const info = useStore((s) => s.info);
+  const [corner, setCorner] = useState<Corner>("br");
+  const press = useRef<{ x: number; y: number } | null>(null);
+  const dragged = useRef(false);
+  useHitRects(corner);
+  useEffect(() => {
+    if (info?.settings.tray_corner) setCorner(info.settings.tray_corner as Corner);
+  }, [info?.settings.tray_corner]);
+  useEffect(() => {
+    const un = listen<Corner>("cd://corner", (e) => setCorner(e.payload));
+    return () => {
+      un.then((f) => f());
+    };
+  }, []);
+
+  // Drag the pill to move the whole tray; it snaps to the nearest corner.
+  function onPillDown(e: React.PointerEvent) {
+    if (e.button !== 0) return;
+    press.current = { x: e.screenX, y: e.screenY };
+    dragged.current = false;
+  }
+  async function onPillMove(e: React.PointerEvent) {
+    const p = press.current;
+    if (!p || dragged.current || !(e.buttons & 1)) return;
+    if (Math.hypot(e.screenX - p.x, e.screenY - p.y) < 6) return;
+    dragged.current = true;
+    press.current = null;
+    setBubble(false);
+    setDeckOpen(false);
+    setHoverPill(false);
+    // The backend drags the window and snaps it to the nearest corner on release.
+    await api.dragTray().catch(() => {});
+  }
 
   useEffect(() => {
     (async () => {
@@ -102,16 +141,16 @@ export function Tray() {
     <div className="relative h-full w-full overflow-hidden" onMouseLeave={() => deckOpen && scheduleClose()}>
       <AnimatePresence>
         {deckOpen && inbox.length > 0 && !bubble && !dropping && (
-          <Deck items={inbox} onEnter={keepOpen} onLeave={() => scheduleClose()} />
+          <Deck items={inbox} corner={corner} onEnter={keepOpen} onLeave={() => scheduleClose()} />
         )}
       </AnimatePresence>
 
-      <AnimatePresence>{bubble && <LinkBubble onClose={() => setBubble(false)} onSubmit={start} />}</AnimatePresence>
+      <AnimatePresence>{bubble && <LinkBubble corner={corner} onClose={() => setBubble(false)} onSubmit={start} />}</AnimatePresence>
 
-      <KeptStack items={kept} />
+      {!hoverPill && !bubble && !dropping && <KeptStack items={kept} corner={corner} />}
 
       {/* The pill */}
-      <div className="absolute bottom-[18px] right-[18px] flex items-end justify-end">
+      <div className="absolute flex" style={at(corner, 18, 18)}>
         <motion.div
           data-hit
           layout
@@ -123,8 +162,18 @@ export function Tray() {
             setHoverPill(false);
             if (deckOpen) scheduleClose();
           }}
-          onClick={() => !dropping && setBubble((b) => !b)}
-          className="relative flex items-center overflow-hidden cursor-pointer"
+          onPointerDown={onPillDown}
+          onPointerMove={onPillMove}
+          onPointerUp={() => (press.current = null)}
+          onClick={() => {
+            if (dragged.current) {
+              dragged.current = false;
+              return;
+            }
+            if (!dropping) setBubble((b) => !b);
+          }}
+          title="Click to clip a link. Drag to move to another corner."
+          className={`relative flex items-center overflow-hidden cursor-pointer ${corner.endsWith("l") ? "flex-row-reverse" : ""}`}
           style={{ borderRadius: dropping ? 34 : 999 }}
           animate={{ width: dropping ? 236 : hoverPill && !bubble ? (working ? 300 : 268) : 64, height: dropping ? 236 : 64 }}
           transition={{ type: "spring", stiffness: 420, damping: 32 }}
@@ -145,7 +194,7 @@ export function Tray() {
             <>
               <AnimatePresence>
                 {hoverPill && !bubble && (
-                  <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="relative min-w-0 flex-1 whitespace-nowrap pl-5 pr-2 text-white">
+                  <motion.div initial={{ opacity: 0, x: corner.endsWith("l") ? -10 : 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className={`relative min-w-0 flex-1 whitespace-nowrap text-white ${corner.endsWith("l") ? "pl-2 pr-5" : "pl-5 pr-2"}`}>
                     {working ? (
                       <>
                         <div className="truncate text-[13px] font-semibold">{active[1].label}</div>
@@ -160,7 +209,7 @@ export function Tray() {
                   </motion.div>
                 )}
               </AnimatePresence>
-              <div className="relative ml-auto grid h-16 w-16 shrink-0 place-items-center">
+              <div className={`relative grid h-16 w-16 shrink-0 place-items-center ${corner.endsWith("l") ? "mr-auto" : "ml-auto"}`}>
                 {working && <Ring value={active[1].progress} size={64} stroke={4} className="absolute inset-0 drop-shadow" />}
                 {working ? (
                   <span className="font-mono text-[12px] font-bold text-white">{Math.round(active[1].progress * 100)}</span>
@@ -173,18 +222,18 @@ export function Tray() {
             </>
           )}
           {!dropping && inbox.length > 0 && !hoverPill && (
-            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute right-0 top-0 grid h-5 min-w-5 place-items-center rounded-full bg-paper px-1 text-[11px] font-bold text-ink-950 shadow">
+            <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="absolute top-0 grid h-5 min-w-5 place-items-center rounded-full bg-paper px-1 text-[11px] font-bold text-ink-950 shadow" style={corner.endsWith("l") ? { left: 0 } : { right: 0 }}>
               {inbox.length}
             </motion.span>
           )}
         </motion.div>
       </div>
-      <Toasts compact />
+      <Toasts compact corner={corner} />
     </div>
   );
 }
 
-function LinkBubble({ onClose, onSubmit }: { onClose: () => void; onSubmit: (s: string) => void }) {
+function LinkBubble({ corner, onClose, onSubmit }: { corner: Corner; onClose: () => void; onSubmit: (s: string) => void }) {
   const [v, setV] = useState("");
   const [clip, setClip] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -208,11 +257,12 @@ function LinkBubble({ onClose, onSubmit }: { onClose: () => void; onSubmit: (s: 
   return (
     <motion.div
       data-hit
-      initial={{ opacity: 0, y: 20, scale: 0.92, originX: 1, originY: 1 }}
+      style={at(corner, 18, 96)}
+      initial={{ opacity: 0, y: corner.startsWith("t") ? -20 : 20, scale: 0.92, originX: corner.endsWith("l") ? 0 : 1, originY: corner.startsWith("t") ? 0 : 1 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: 12, scale: 0.94, transition: { duration: 0.14 } }}
       transition={{ type: "spring", stiffness: 420, damping: 30 }}
-      className="glass-dark absolute bottom-[96px] right-[18px] w-[400px] rounded-[26px] p-4 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]"
+      className="glass-dark absolute w-[400px] rounded-[26px] p-4 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.9)]"
     >
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2 font-display text-[16px] font-semibold"><Mark size={22} /> Clip a video</div>
@@ -264,7 +314,7 @@ function LinkBubble({ onClose, onSubmit }: { onClose: () => void; onSubmit: (s: 
   );
 }
 
-function Deck({ items, onEnter, onLeave }: { items: Item[]; onEnter: () => void; onLeave: () => void }) {
+function Deck({ items, corner, onEnter, onLeave }: { items: Item[]; corner: Corner; onEnter: () => void; onLeave: () => void }) {
   const top = items[0];
   const rest = items.slice(1, 4);
   const toast = useStore((s) => s.toast);
@@ -284,11 +334,12 @@ function Deck({ items, onEnter, onLeave }: { items: Item[]; onEnter: () => void;
       data-hit
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
-      initial={{ opacity: 0, x: 40, y: 30, scale: 0.85 }}
+      style={at(corner, 100, 100)}
+      initial={{ opacity: 0, x: corner.endsWith("l") ? -40 : 40, y: corner.startsWith("t") ? -30 : 30, scale: 0.85 }}
       animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
       exit={{ opacity: 0, x: 60, y: 40, scale: 0.85, transition: { duration: 0.2 } }}
       transition={{ type: "spring", stiffness: 300, damping: 26 }}
-      className="absolute bottom-[100px] right-[100px] flex flex-col items-center"
+      className={`absolute flex items-center ${corner.startsWith("t") ? "flex-col-reverse" : "flex-col"}`}
     >
       <div className="relative h-[384px] w-[216px]">
         {rest
@@ -300,7 +351,7 @@ function Deck({ items, onEnter, onLeave }: { items: Item[]; onEnter: () => void;
               <motion.div
                 key={`${it.pid}/${it.clip.id}`}
                 className="absolute inset-0 overflow-hidden rounded-[22px] border border-white/10 bg-ink-800 shadow-2xl"
-                animate={{ rotate: i * 4.5, x: i * 12, y: i * 4, scale: 1 - i * 0.04 }}
+                animate={{ rotate: (corner.endsWith("l") ? -1 : 1) * i * 4.5, x: (corner.endsWith("l") ? -1 : 1) * i * 12, y: i * 4, scale: 1 - i * 0.04 }}
                 transition={{ type: "spring", stiffness: 260, damping: 24 }}
               >
                 {it.clip.thumb && <img src={fileUrl(it.clip.thumb, it.clip.rev)} className="h-full w-full object-cover opacity-60" />}
@@ -311,7 +362,7 @@ function Deck({ items, onEnter, onLeave }: { items: Item[]; onEnter: () => void;
           <TopCard key={`${top.pid}/${top.clip.id}`} it={top} onDecide={(k) => decide(top, k)} />
         </AnimatePresence>
       </div>
-      <div className="mt-4 flex items-center gap-3">
+      <div className={`flex items-center gap-3 ${corner.startsWith("t") ? "mb-4" : "mt-4"}`}>
         <button onClick={() => decide(top, false)} className="glass-dark grid h-12 w-12 place-items-center rounded-full text-mute hover:text-paper hover:scale-105 transition cursor-pointer" title="Skip">
           <X size={20} />
         </button>
@@ -379,7 +430,8 @@ function TopCard({ it, onDecide }: { it: Item; onDecide: (keep: boolean) => void
   );
 }
 
-function KeptStack({ items }: { items: Item[] }) {
+function KeptStack({ items, corner }: { items: Item[]; corner: Corner }) {
+  const side = corner.endsWith("l") ? "left" : "right";
   const [open, setOpen] = useState(false);
   const exp = useStore((s) => s.exportProgress);
   if (items.length === 0) return null;
@@ -388,7 +440,8 @@ function KeptStack({ items }: { items: Item[] }) {
       data-hit
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
-      className="absolute bottom-[18px] right-[96px] flex h-16 items-center"
+      style={at(corner, 96, 18)}
+      className="absolute flex h-16 items-center"
       animate={{ width: open ? Math.min(items.length, 6) * 50 + 20 : 58 }}
       transition={{ type: "spring", stiffness: 400, damping: 32 }}
     >
@@ -401,7 +454,7 @@ function KeptStack({ items }: { items: Item[] }) {
               key={`${it.pid}/${it.clip.id}`}
               className={`absolute bottom-0 h-16 w-9 overflow-hidden rounded-lg border border-white/20 bg-ink-800 shadow-xl ${done ? "cursor-grab" : ""}`}
               style={{ zIndex: 10 - i }}
-              animate={{ right: open ? i * 50 + 8 : i * 3, rotate: open ? 0 : -i * 5, y: open ? 0 : i * -1 }}
+              animate={{ [side]: open ? i * 50 + 8 : i * 3, rotate: open ? 0 : (side === "left" ? i : -i) * 5, y: open ? 0 : i * -1 }}
               transition={{ type: "spring", stiffness: 380, damping: 28 }}
               title={done ? "Drag into any app" : "Exporting…"}
               onPointerDown={(e) => {

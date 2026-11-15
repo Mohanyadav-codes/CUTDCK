@@ -16,6 +16,8 @@ pub struct Settings {
     pub launch_at_login: bool,
     /// Max minutes of audio to transcribe for very long streams.
     pub listen_budget_min: f64,
+    /// Screen corner for the tray: br, bl, tr, tl.
+    pub tray_corner: String,
 }
 
 impl Default for Settings {
@@ -27,6 +29,7 @@ impl Default for Settings {
             export_dir: default_export_dir().to_string_lossy().to_string(),
             launch_at_login: false,
             listen_budget_min: 60.0,
+            tray_corner: "br".into(),
         }
     }
 }

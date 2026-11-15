@@ -59,11 +59,14 @@ export function Ring({ value, size = 64, stroke = 4, className = "" }: { value: 
   );
 }
 
-export function Toasts({ compact = false }: { compact?: boolean }) {
+export function Toasts({ compact = false, corner = "br" }: { compact?: boolean; corner?: string }) {
   const toasts = useStore((s) => s.toasts);
   const drop = useStore((s) => s.dropToast);
   return (
-    <div className={`pointer-events-none fixed z-[100] flex flex-col gap-2 ${compact ? "right-24 bottom-6 items-end" : "right-6 bottom-6 items-end"}`}>
+    <div
+      className={`pointer-events-none fixed z-[100] flex flex-col gap-2 ${corner.endsWith("l") ? "items-start" : "items-end"}`}
+      style={compact ? { [corner.endsWith("l") ? "left" : "right"]: 96, [corner.startsWith("t") ? "top" : "bottom"]: 24 } : { right: 24, bottom: 24 }}
+    >
       <AnimatePresence>
         {toasts.map((t) => (
           <motion.div

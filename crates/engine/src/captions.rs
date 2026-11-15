@@ -113,7 +113,7 @@ pub fn build_ass(c: &CaptionInput) -> String {
         sh = st.shadow,
     ));
     s.push_str(&format!(
-        "Style: Hook,Archivo Black,54,{pc},{pc},{box},{box},0,0,0,0,100,100,0,0,3,18,0,5,90,90,0,1\n\n",
+        "Style: Hook,Archivo Black,66,{pc},{pc},{box},{box},0,0,0,0,100,100,0,0,3,22,0,5,80,80,0,1\n\n",
         pc = ass_color("#111111", 0),
         box = ass_color("#FFFFFF", 0),
     ));

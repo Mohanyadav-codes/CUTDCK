@@ -196,7 +196,7 @@ fn user_prompt(settings: &JobSettings, lines: &str, want: usize) -> String {
     format!(
         r#"Find the best moments for vertical shorts in this part of the transcript.
 
-Each line is: id [time] text. Markers: LOUD = shouting, hype or big sound. CHAT = chat exploded. "(no talking, loud moment)" = action without speech.
+Each line is: id [time] text. Markers (never copy them into titles or hooks): LOUD = shouting, hype or big sound. CHAT = chat exploded. "(no talking, loud moment)" = action without speech.
 
 Rules:
 - Each clip is {min:.0} to {max:.0} seconds long (sweet spot 25-45 s).
@@ -276,6 +276,13 @@ pub fn heuristic_score(sents: &[Sentence], a: usize, b: usize, energy: &Energy, 
         + q * 0.25
         + ex * 0.2
         + hook * 0.5
+}
+
+/// Remove our transcript markers and odd punctuation from AI-written labels.
+fn clean_label(s: &str) -> String {
+    let s = s.replace(['\u{2010}', '\u{2011}', '\u{2012}', '\u{2013}'], "-").replace('\u{2014}', " - ");
+    let words: Vec<&str> = s.split_whitespace().filter(|w| !matches!(w.trim_matches(|c: char| !c.is_alphanumeric()), "LOUD" | "CHAT")).collect();
+    words.join(" ").trim_matches(|c: char| c == '"' || c == '\'' || c.is_whitespace()).to_string()
 }
 
 fn to_score(h: f32) -> f32 {
@@ -413,7 +420,7 @@ fn parse_clip(c: &Value, sents: &[Sentence], wa: usize, wb: usize, energy: &Ener
     let llm_score = c.get("score").and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))).unwrap_or(60.0) as f32;
     let h = heuristic_score(sents, a2, b2, energy, chat);
     let combined = (llm_score.clamp(0.0, 100.0) * 0.8 + to_score(h) * 0.2).clamp(1.0, 99.0);
-    let text = |k: &str| c.get(k).and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let text = |k: &str| clean_label(c.get(k).and_then(|v| v.as_str()).unwrap_or(""));
     let first = sents[a2..].iter().find(|x| !x.synthetic).map(|x| x.text.clone()).unwrap_or_default();
     let mut title = text("title");
     if title.is_empty() {
@@ -438,6 +445,12 @@ mod tests {
                 Word { w, s, e: s + 0.3 }
             })
             .collect()
+    }
+
+    #[test]
+    fn labels_are_cleaned() {
+        assert_eq!(clean_label("Jump! LOUD chaos"), "Jump! chaos");
+        assert_eq!(clean_label("Tug\u{2011}of\u{2011}War"), "Tug-of-War");
     }
 
     #[test]

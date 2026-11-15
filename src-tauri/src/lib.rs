@@ -191,6 +191,8 @@ pub fn run() {
             commands::export_clip,
             commands::set_hit_rects,
             commands::focus_tray,
+            commands::drag_tray,
+            commands::set_tray_corner,
             commands::open_studio,
             commands::reveal,
             commands::quit,
