@@ -26,12 +26,21 @@ fn build_windows(app: &AppHandle, onboarded: bool) -> tauri::Result<()> {
     let studio = WebviewWindowBuilder::new(app, "studio", WebviewUrl::App("index.html#/studio".into()))
         .title("Cutdeck")
         .inner_size(1360.0, 860.0)
-        .min_inner_size(1080.0, 700.0)
+        .min_inner_size(1024.0, 640.0)
         .decorations(false)
         .center()
         .visible(!onboarded)
         .background_color(tauri::window::Color(10, 10, 14, 255))
         .build()?;
+    // Fit the studio inside the screen it opens on (high-DPI laptops are short).
+    if let Ok(Some(m)) = studio.current_monitor().or_else(|_| studio.primary_monitor()) {
+        let wa = m.work_area();
+        let s = m.scale_factor();
+        let (aw, ah) = (wa.size.width as f64 / s, wa.size.height as f64 / s);
+        let (w, h) = ((aw * 0.92).min(1360.0), (ah * 0.92).min(860.0));
+        let _ = studio.set_size(tauri::LogicalSize::new(w, h));
+        let _ = studio.center();
+    }
     let app2 = app.clone();
     studio.on_window_event(move |ev| {
         if let tauri::WindowEvent::CloseRequested { api, .. } = ev {
