@@ -1,0 +1,19 @@
+[package]
+name = "cutdeck-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Command-line runner for the Cutdeck engine (tests and debugging)."
+
+[[bin]]
+name = "cutdeck"
+path = "src/main.rs"
+
+[dependencies]
+cutdeck-engine = { path = "../engine" }
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
