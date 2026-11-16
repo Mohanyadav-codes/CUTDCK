@@ -101,6 +101,7 @@ export interface Settings {
   launch_at_login: boolean;
   listen_budget_min: number;
   tray_corner: string;
+  youtube_browser_login: boolean;
 }
 
 export interface Preset {

@@ -18,6 +18,8 @@ pub struct Settings {
     pub listen_budget_min: f64,
     /// Screen corner for the tray: br, bl, tr, tl.
     pub tray_corner: String,
+    /// If YouTube blocks a download, retry with the browser's YouTube sign-in.
+    pub youtube_browser_login: bool,
 }
 
 impl Default for Settings {
@@ -30,6 +32,7 @@ impl Default for Settings {
             launch_at_login: false,
             listen_budget_min: 60.0,
             tray_corner: "br".into(),
+            youtube_browser_login: true,
         }
     }
 }

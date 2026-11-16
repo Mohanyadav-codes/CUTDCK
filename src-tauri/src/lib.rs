@@ -139,6 +139,7 @@ pub fn run() {
             };
             let settings_path = config_dir.join("settings.json");
             let s = settings::load(&settings_path);
+            cutdeck_engine::source::set_browser_login(s.youtube_browser_login);
             let onboarded = s.onboarded && s.ai.is_some();
             app.manage(AppState {
                 data_dir: data_dir.clone(),
@@ -165,7 +166,7 @@ pub fn run() {
                 state::resume_exports(&h2).await;
                 // Keep yt-dlp current; YouTube changes often.
                 if let Ok(engine) = h2.state::<AppState>().engine().await {
-                    let _ = cutdeck_engine::deps::update_ytdlp(&engine.tools).await;
+                    cutdeck_engine::source::keep_fresh(&engine.tools, false).await;
                 }
             });
             Ok(())

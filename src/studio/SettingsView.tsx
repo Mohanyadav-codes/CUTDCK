@@ -113,6 +113,12 @@ export function SettingsView() {
           </Field>
         </Section>
 
+        <Section title="Downloads">
+          <Field label="Use my browser's YouTube sign-in if needed" hint="Only when YouTube asks for a sign-in check. Your browser cookies stay on this computer and are used only to talk to YouTube. Firefox works best.">
+            <Toggle on={s.youtube_browser_login ?? true} onChange={(v) => save({ ...s, youtube_browser_login: v })} />
+          </Field>
+        </Section>
+
         <Section title="App">
           <Field label="Export folder" hint={<span className="font-mono text-[12px]">{s.export_dir}</span>}>
             <Button
@@ -150,7 +156,7 @@ export function SettingsView() {
             <Info size={16} className="mt-0.5 shrink-0" />
             <div>
               Cutdeck {info.version} by{" "}
-              <button className="text-coral-soft hover:text-coral cursor-pointer" onClick={() => openUrl("https://mohanbuilds.com")}>mohanbuilds</button>. Videos are processed on this
+              <button className="text-coral-soft hover:text-coral cursor-pointer" onClick={() => openUrl("https://mohanbuilds.space")}>mohanbuilds</button>. Videos are processed on this
               computer; only audio goes to your AI provider for transcription. Uses FFmpeg (GPL), yt-dlp, Deno and whisper.cpp as separate programs. Only clip content you have the right to use.
             </div>
           </div>

@@ -242,7 +242,11 @@ pub async fn install(
 
     if !st.ytdlp {
         let label = "yt-dlp (link downloader)";
-        let rel = gh_latest("yt-dlp/yt-dlp").await?;
+        // Nightly is yt-dlp's recommended channel; it gets YouTube fixes within a day.
+        let rel = match gh_latest("yt-dlp/yt-dlp-nightly-builds").await {
+            Ok(r) if r.assets.iter().any(|a| a.name == if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp_macos" }) => r,
+            _ => gh_latest("yt-dlp/yt-dlp").await?,
+        };
         let name = if cfg!(windows) { "yt-dlp.exe" } else { "yt-dlp_macos" };
         let asset = rel.assets.iter().find(|a| a.name == name).ok_or_else(|| anyhow!("no yt-dlp build found"))?;
         let sums = rel.assets.iter().find(|a| a.name == "SHA2-256SUMS");
@@ -349,7 +353,7 @@ pub async fn install_whisper(
 pub async fn update_ytdlp(tools: &Tools) -> Result<()> {
     if let Some(y) = &tools.ytdlp {
         let mut c = crate::proc::command(y);
-        c.arg("-U");
+        c.args(["--update-to", "nightly"]);
         crate::proc::run(c, &CancellationToken::new()).await?;
     }
     Ok(())

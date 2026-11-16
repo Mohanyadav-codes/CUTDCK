@@ -69,6 +69,7 @@ impl AppState {
 
     pub fn save_settings(&self, s: Settings) -> Result<()> {
         crate::settings::save(&self.settings_path, &s)?;
+        cutdeck_engine::source::set_browser_login(s.youtube_browser_login);
         *self.settings.lock().unwrap() = s;
         Ok(())
     }

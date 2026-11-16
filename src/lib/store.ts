@@ -56,9 +56,11 @@ export const useStore = create<State>((set, get) => ({
     set({ projects: { ...get().projects, [projectId]: { ...p, clips } } });
   },
   toast: (text, tone = "info") => {
+    // The same message twice (e.g. a retried link) shows once, with a fresh timer.
+    const rest = get().toasts.filter((t) => t.text !== text);
     const id = toastId++;
-    set({ toasts: [...get().toasts, { id, text, tone }] });
-    setTimeout(() => get().dropToast(id), tone === "error" ? 7000 : 4200);
+    set({ toasts: [...rest, { id, text, tone }].slice(-3) });
+    setTimeout(() => get().dropToast(id), tone === "error" ? 9000 : 4200);
   },
   dropToast: (id) => set({ toasts: get().toasts.filter((t) => t.id !== id) }),
 }));
