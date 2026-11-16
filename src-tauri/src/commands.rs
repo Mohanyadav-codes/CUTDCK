@@ -336,6 +336,34 @@ pub fn reveal(path: String) -> R<()> {
     }
     Ok(())
 }
+/// Open an exported clip in the default video player.
+#[tauri::command]
+pub fn open_file(st: State<AppState>, path: String) -> R<()> {
+    let export_dir = std::path::PathBuf::from(st.settings().export_dir);
+    let p = std::path::PathBuf::from(&path);
+    let log = |m: &str| {
+        let _ = std::fs::write(st.data_dir.join("last-open.log"), format!("{path}\n{m}\n"));
+    };
+    // Only files Cutdeck exported.
+    if !p.starts_with(&export_dir) || !p.is_file() {
+        log("rejected: not in export folder or missing");
+        return Err("That file is no longer there.".into());
+    }
+    #[cfg(windows)]
+    let r = std::process::Command::new("explorer").arg(&p).spawn();
+    #[cfg(not(windows))]
+    let r = std::process::Command::new("open").arg(&p).spawn();
+    match r {
+        Ok(_) => {
+            log("opened");
+            Ok(())
+        }
+        Err(err) => {
+            log(&format!("error: {err}"));
+            Err(e(err))
+        }
+    }
+}
 #[tauri::command]
 pub fn quit(app: AppHandle) {
     app.exit(0);

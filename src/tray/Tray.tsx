@@ -1,5 +1,5 @@
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, type PanInfo } from "motion/react";
-import { Check, ClipboardPaste, Link2, Loader2, Maximize2, Upload, X } from "lucide-react";
+import { Check, ClipboardPaste, Link2, Loader2, Maximize2, Play, Upload, X } from "lucide-react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { listen } from "@tauri-apps/api/event";
 import { readText } from "@tauri-apps/plugin-clipboard-manager";
@@ -430,47 +430,121 @@ function TopCard({ it, onDecide }: { it: Item; onDecide: (keep: boolean) => void
   );
 }
 
+const HIDDEN_KEY = "cutdeck.tray.hidden";
+
+function hiddenSet(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(HIDDEN_KEY) ?? "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Kept clips beside the button. Click to play, drag into any app, × to clear
+ * from the shelf (the file stays in the export folder).
+ */
 function KeptStack({ items, corner }: { items: Item[]; corner: Corner }) {
   const side = corner.endsWith("l") ? "left" : "right";
+  const top = corner.startsWith("t");
   const [open, setOpen] = useState(false);
+  const [hidden, setHidden] = useState<Set<string>>(hiddenSet);
+  const [hint, setHint] = useState<string | null>(null);
   const exp = useStore((s) => s.exportProgress);
-  if (items.length === 0) return null;
+  const toast = useStore((s) => s.toast);
+  const press = useRef<{ x: number; y: number; key: string } | null>(null);
+  const shown = items.filter((it) => !hidden.has(`${it.pid}/${it.clip.id}`)).slice(0, 6);
+  if (shown.length === 0) return null;
+
+  const hide = (key: string) => {
+    const n = new Set(hidden);
+    n.add(key);
+    setHidden(n);
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...n].slice(-300)));
+  };
+
   return (
     <motion.div
       data-hit
       onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseLeave={() => {
+        setOpen(false);
+        setHint(null);
+      }}
       style={at(corner, 96, 18)}
       className="absolute flex h-16 items-center"
-      animate={{ width: open ? Math.min(items.length, 6) * 50 + 20 : 58 }}
+      animate={{ width: open ? shown.length * 50 + 20 : 58 }}
       transition={{ type: "spring", stiffness: 400, damping: 32 }}
     >
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: top ? -4 : 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="glass-dark pointer-events-none absolute whitespace-nowrap rounded-lg px-2.5 py-1 text-[11.5px] text-paper/90"
+            style={{ [side]: 8, [top ? "top" : "bottom"]: 72 }}
+          >
+            {hint ?? "Click to play · Drag into any app"}
+          </motion.div>
+        )}
+      </AnimatePresence>
       <div className="relative h-16 w-full">
-        {items.slice(0, 6).map((it, i) => {
-          const done = it.clip.status === "exported" && it.clip.export_path;
-          const p = exp[`${it.pid}/${it.clip.id}`];
+        {shown.map((it, i) => {
+          const key = `${it.pid}/${it.clip.id}`;
+          const done = it.clip.status === "exported" && !!it.clip.export_path;
+          const p = exp[key];
           return (
             <motion.div
-              key={`${it.pid}/${it.clip.id}`}
-              className={`absolute bottom-0 h-16 w-9 overflow-hidden rounded-lg border border-white/20 bg-ink-800 shadow-xl ${done ? "cursor-grab" : ""}`}
+              key={key}
+              className={`group absolute bottom-0 h-16 w-9 rounded-lg border border-white/20 bg-ink-800 shadow-xl ${done ? "cursor-pointer" : "cursor-default"}`}
               style={{ zIndex: 10 - i }}
               animate={{ [side]: open ? i * 50 + 8 : i * 3, rotate: open ? 0 : (side === "left" ? i : -i) * 5, y: open ? 0 : i * -1 }}
+              whileHover={open ? { y: -4, scale: 1.08 } : undefined}
               transition={{ type: "spring", stiffness: 380, damping: 28 }}
-              title={done ? "Drag into any app" : "Exporting…"}
+              onMouseEnter={() => setHint(done ? it.clip.pick.title : "Exporting…")}
               onPointerDown={(e) => {
-                if (!done) return;
-                e.preventDefault();
+                if (e.button === 0 && done) press.current = { x: e.screenX, y: e.screenY, key };
+              }}
+              onPointerMove={(e) => {
+                const pr = press.current;
+                if (!pr || pr.key !== key || !(e.buttons & 1)) return;
+                if (Math.hypot(e.screenX - pr.x, e.screenY - pr.y) < 6) return;
+                press.current = null;
                 startDrag({ item: [it.clip.export_path!], icon: it.clip.thumb ?? "" }).catch(() => {});
               }}
-              onDoubleClick={() => done && api.reveal(it.clip.export_path!)}
+              onPointerUp={() => (press.current = null)}
+              onClick={() => {
+                if (done) api.openFile(it.clip.export_path!).catch((err) => toast(errText(err), "error"));
+              }}
             >
-              {it.clip.thumb && <img src={fileUrl(it.clip.thumb, it.clip.rev)} className={`h-full w-full object-cover ${done ? "" : "opacity-50"}`} draggable={false} />}
+              <div className="h-full w-full overflow-hidden rounded-lg">
+                {it.clip.thumb && <img src={fileUrl(it.clip.thumb, it.clip.rev)} className={`h-full w-full object-cover ${done ? "" : "opacity-50"}`} draggable={false} />}
+              </div>
               {!done && (
                 <div className="absolute inset-0 grid place-items-center">
                   <Ring value={p ?? 0.02} size={24} stroke={3} />
                 </div>
               )}
-              {done && open && <Check size={11} className="absolute right-0.5 top-0.5 rounded-full bg-mint p-px text-black" />}
+              {open && done && (
+                <span className="absolute inset-0 hidden place-items-center rounded-lg bg-black/35 group-hover:grid">
+                  <Play size={14} fill="white" className="text-white" />
+                </span>
+              )}
+              {open && (
+                <button
+                  title="Remove from this shelf (the file stays)"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    hide(key);
+                  }}
+                  className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 place-items-center rounded-full bg-paper text-ink-950 shadow group-hover:grid cursor-pointer"
+                >
+                  <X size={10} strokeWidth={3} />
+                </button>
+              )}
             </motion.div>
           );
         })}

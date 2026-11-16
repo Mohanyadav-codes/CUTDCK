@@ -40,6 +40,7 @@ export const api = {
   setTrayCorner: (corner: string) => invoke<void>("set_tray_corner", { corner }),
   openStudio: (view?: string) => invoke<void>("open_studio", { view: view ?? null }),
   reveal: (path: string) => invoke<void>("reveal", { path }),
+  openFile: (path: string) => invoke<void>("open_file", { path }),
   quit: () => invoke<void>("quit"),
 };
 

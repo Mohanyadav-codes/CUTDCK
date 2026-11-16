@@ -195,6 +195,7 @@ pub fn run() {
             commands::set_tray_corner,
             commands::open_studio,
             commands::reveal,
+            commands::open_file,
             commands::quit,
         ])
         .build(tauri::generate_context!())
